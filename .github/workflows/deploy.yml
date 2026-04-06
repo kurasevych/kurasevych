@@ -1,4 +1,4 @@
-name: CI/CD Infrastructure and Apps
+name: "Cloud Deployment CI/CD"
 
 on:
   push:
@@ -6,51 +6,55 @@ on:
 
 jobs:
   terraform:
-    name: "Terraform Build"
+    name: "Infrastructure (Terraform)"
     runs-on: ubuntu-latest
-    env:
-      DIGITALOCEAN_TOKEN: ${{ secrets.DO_TOKEN }}
     outputs:
-      droplet_ip: ${{ steps.get_ip.outputs.ip }}
-
+      target_ip: ${{ steps.out.outputs.ip }}
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+      
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init
+      - name: TF Init
         run: terraform init -backend-config="access_key=${{ secrets.SPACES_ACCESS_ID }}" -backend-config="secret_key=${{ secrets.SPACES_SECRET_KEY }}"
+        working-directory: ./terraform
 
-      - name: Terraform Plan (Перевірка за завданням 1)
+      - name: TF Plan (Валідація за завданням 1)
         run: terraform plan -var="do_token=${{ secrets.DO_TOKEN }}" -var="ssh_public_key=${{ secrets.SSH_PUBLIC_KEY }}" -var="last_name=${{ vars.LAST_NAME }}"
+        working-directory: ./terraform
 
-      - name: Terraform Apply
+      - name: TF Apply
         run: terraform apply -auto-approve -var="do_token=${{ secrets.DO_TOKEN }}" -var="ssh_public_key=${{ secrets.SSH_PUBLIC_KEY }}" -var="last_name=${{ vars.LAST_NAME }}"
+        working-directory: ./terraform
 
-      - name: Get Droplet IP
-        id: get_ip
+      - name: Export IP
+        id: out
         run: echo "ip=$(terraform output -raw droplet_ip)" >> $GITHUB_OUTPUT
+        working-directory: ./terraform
 
   ansible:
-    name: "Ansible Configuration"
+    name: "Software (Ansible)"
     needs: terraform
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup SSH Key
+      - name: Install SSH Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ needs.terraform.outputs.target_ip }} >> ~/.ssh/known_hosts
 
       - name: Ansible Check (Перевірка за завданням 2)
         run: |
-          ansible-playbook -i "${{ needs.terraform.outputs.droplet_ip }}," -u root --private-key ~/.ssh/id_rsa ansible/playbook.yml --check
+          ansible-playbook -i '${{ needs.terraform.outputs.target_ip }},' -u root --private-key ~/.ssh/id_rsa ansible/playbook.yml --check
 
-      - name: Ansible Playbook Run
+      - name: Ansible Install
         run: |
-          ansible-playbook -i "${{ needs.terraform.outputs.droplet_ip }}," -u root --private-key ~/.ssh/id_rsa ansible/playbook.yml
+          ansible-playbook -i '${{ needs.terraform.outputs.target_ip }},' -u root --private-key ~/.ssh/id_rsa ansible/playbook.yml
+
+      - name: Setup Minikube Proxy (Вимога завдання 2)
+        run: |
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no root@${{ needs.terraform.outputs.target_ip }} "kubectl proxy --address='0.0.0.0' --accept-hosts='.*' &"
