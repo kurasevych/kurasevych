@@ -2,134 +2,117 @@ terraform {
   required_version = ">= 1.5.0"
 
   required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 5.0"
+    digitalocean = {
+      source  = "digitalocean/digitalocean"
+      version = "~> 2.0"
     }
   }
 
-  # Remote tfstate stored in GCS bucket (bootstrap bucket, created separately)
-  backend "gcs" {
-    bucket = "kurasevych-tfstate-backend"
-    prefix = "terraform/state"
+  # Remote tfstate stored in DigitalOcean Spaces
+  backend "s3" {
+    endpoint                    = "fra1.digitaloceanspaces.com"
+    bucket                      = "kurasevych-tfstate-backend"
+    key                         = "terraform/state/terraform.tfstate"
+    region                      = "us-east-1" # placeholder, required by S3 backend
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_region_validation      = true
+    force_path_style            = true
   }
 }
 
-provider "google" {
-  project = var.project_id
-  region  = var.region
+provider "digitalocean" {
+  token = var.do_token
 }
 
 # ─────────────────────────────────────────────
 # VPC
 # ─────────────────────────────────────────────
-resource "google_compute_network" "vpc" {
-  name                    = "${var.last_name}-vpc"
-  auto_create_subnetworks = false
-  description             = "VPC for ${var.last_name} project"
-}
-
-resource "google_compute_subnetwork" "subnet" {
-  name          = "${var.last_name}-subnet"
-  ip_cidr_range = "10.10.10.0/24"
-  region        = var.region
-  network       = google_compute_network.vpc.id
+resource "digitalocean_vpc" "vpc" {
+  name     = "${var.last_name}-vpc"
+  region   = var.region
+  ip_range = "10.10.10.0/24"
 }
 
 # ─────────────────────────────────────────────
 # Firewall
 # ─────────────────────────────────────────────
-resource "google_compute_firewall" "firewall" {
-  name    = "${var.last_name}-firewall"
-  network = google_compute_network.vpc.name
+resource "digitalocean_firewall" "firewall" {
+  name = "${var.last_name}-firewall"
 
-  # Inbound: allow specific ports
-  allow {
-    protocol = "tcp"
-    ports    = ["22", "80", "443", "8000", "8001", "8002", "8003"]
+  droplet_ids = [digitalocean_droplet.node.id]
+
+  # Inbound: дозволені порти
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "22"
+    source_addresses = ["0.0.0.0/0", "::/0"]
   }
 
-  direction     = "INGRESS"
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["${var.last_name}-node"]
-}
-
-resource "google_compute_firewall" "firewall_egress" {
-  name    = "${var.last_name}-firewall-egress"
-  network = google_compute_network.vpc.name
-
-  # Outbound: allow all ports 1-65535
-  allow {
-    protocol = "tcp"
-    ports    = ["1-65535"]
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "80"
+    source_addresses = ["0.0.0.0/0", "::/0"]
   }
 
-  allow {
-    protocol = "udp"
-    ports    = ["1-65535"]
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "443"
+    source_addresses = ["0.0.0.0/0", "::/0"]
   }
 
-  direction          = "EGRESS"
-  destination_ranges = ["0.0.0.0/0"]
-  target_tags        = ["${var.last_name}-node"]
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "8000-8003"
+    source_addresses = ["0.0.0.0/0", "::/0"]
+  }
+
+  # Outbound: всі порти 1-65535
+  outbound_rule {
+    protocol              = "tcp"
+    port_range            = "1-65535"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
+
+  outbound_rule {
+    protocol              = "udp"
+    port_range            = "1-65535"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
 }
 
 # ─────────────────────────────────────────────
-# VM (meets Minikube requirements: 2 CPU, 4GB RAM)
+# SSH Key
 # ─────────────────────────────────────────────
-resource "google_compute_instance" "node" {
-  name         = "${var.last_name}-node"
-  machine_type = "e2-standard-2"   # 2 vCPU, 8 GB RAM — enough for Minikube
-  zone         = "${var.region}-a"
+resource "digitalocean_ssh_key" "default" {
+  name       = "${var.last_name}-ssh-key"
+  public_key = var.ssh_public_key
+}
+
+# ─────────────────────────────────────────────
+# VM (Droplet) — відповідає вимогам Minikube
+# s-2vcpu-4gb: 2 vCPU, 4 GB RAM
+# ─────────────────────────────────────────────
+resource "digitalocean_droplet" "node" {
+  name     = "${var.last_name}-node"
+  size     = "s-2vcpu-4gb"   # 2 vCPU, 4 GB RAM — мінімум для Minikube
+  image    = "ubuntu-24-04-x64"
+  region   = var.region
+  vpc_uuid = digitalocean_vpc.vpc.id
+  ssh_keys = [digitalocean_ssh_key.default.fingerprint]
 
   tags = ["${var.last_name}-node"]
-
-  boot_disk {
-    initialize_params {
-      image = "ubuntu-os-cloud/ubuntu-2404-lts-amd64"
-      size  = 50  # GB
-      type  = "pd-ssd"
-    }
-  }
-
-  network_interface {
-    network    = google_compute_network.vpc.id
-    subnetwork = google_compute_subnetwork.subnet.id
-
-    access_config {
-      # Ephemeral public IP
-    }
-  }
-
-  metadata = {
-    ssh-keys = "${var.ssh_user}:${var.ssh_public_key}"
-  }
-
-  lifecycle {
-    prevent_destroy = false
-  }
 }
 
 # ─────────────────────────────────────────────
-# Object Storage Bucket
+# Object Storage (Spaces bucket)
 # ─────────────────────────────────────────────
-resource "google_storage_bucket" "bucket" {
-  name          = "${var.last_name}-bucket"
-  location      = var.region
-  storage_class = "STANDARD"
-
-  uniform_bucket_level_access = true
+resource "digitalocean_spaces_bucket" "bucket" {
+  name   = "${var.last_name}-bucket"
+  region = var.region
+  acl    = "private"
 
   versioning {
     enabled = true
-  }
-
-  lifecycle_rule {
-    action {
-      type = "Delete"
-    }
-    condition {
-      age = 365
-    }
   }
 }
