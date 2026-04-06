@@ -1,11 +1,12 @@
 ---
-- name: Setup Kubernetes and Minikube
+- name: Setup Kubernetes, Minikube and Deploy App (Task 2 & 3)
   hosts: all
   become: yes
   vars:
     ansible_python_interpreter: /usr/bin/python3
 
   tasks:
+    # --- СЕКЦІЯ 1: ПІДГОТОВКА СИСТЕМИ (Завдання 2) ---
     - name: Update apt cache and install dependencies
       apt:
         name:
@@ -48,17 +49,15 @@
         mode: '0755'
 
     - name: Start Minikube as root (Force Docker driver)
-      # ПРИБРАНО флаг --non-interactive, який викликав помилку
       command: minikube start --driver=docker --force
       register: minikube_start
       changed_when: "'Done!' in minikube_start.stdout"
-      # ignore_errors залишаємо для першого запуску, але тепер команда має бути успішною
 
     - name: Wait for Minikube to be ready
       command: kubectl get nodes
       register: nodes_ready
-      retries: 15 # Збільшено кількість спроб
-      delay: 20   # Збільшено затримку для повільних серверів
+      retries: 15
+      delay: 20
       until: nodes_ready.rc == 0
 
     - name: Install Helm
@@ -66,3 +65,90 @@
         curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
       args:
         creates: /usr/local/bin/helm
+
+    # --- СЕКЦІЯ 2: РОЗГОРТАННЯ ЗАСТОСУНКУ (Завдання 3) ---
+    - name: Create app deployment manifest on server
+      copy:
+        dest: /root/app-deploy.yaml
+        content: |
+          # --- DEV Environment ---
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: dev
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: app-dev
+            namespace: dev
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: devops-app
+            template:
+              metadata:
+                labels:
+                  app: devops-app
+              spec:
+                containers:
+                - name: web-app
+                  image: kurasevych/devops-app:develop
+                  ports:
+                  - containerPort: 8080
+          ---
+          # --- RELEASE Environment ---
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: release
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: app-release
+            namespace: release
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: devops-app
+            template:
+              metadata:
+                labels:
+                  app: devops-app
+              spec:
+                containers:
+                - name: web-app
+                  image: kurasevych/devops-app:1.0.0
+                  ports:
+                  - containerPort: 8080
+
+    - name: Deploy Application to K8s
+      command: kubectl apply -f /root/app-deploy.yaml
+
+    - name: Wait for Pods to be Running
+      shell: "kubectl get pods -A | grep -E 'dev|release' | grep 'Running'"
+      register: pods_check
+      retries: 20
+      delay: 15
+      until: pods_check.rc == 0
+
+    - name: Kill existing port-forwards
+      shell: "pkill kubectl || true"
+
+    - name: Port-forward DEV (8002:8080)
+      shell: "nohup kubectl port-forward --namespace dev deployment/app-dev 8002:8080 --address 0.0.0.0 > /dev/null 2>&1 &"
+
+    - name: Port-forward RELEASE (8003:8080)
+      shell: "nohup kubectl port-forward --namespace release deployment/app-release 8003:8080 --address 0.0.0.0 > /dev/null 2>&1 &"
+
+    - name: Check ports are listening
+      wait_for:
+        port: "{{ item }}"
+        delay: 5
+        timeout: 60
+      with_items:
+        - 8002
+        - 8003
