@@ -116,3 +116,6 @@ resource "digitalocean_spaces_bucket" "bucket" {
     enabled = true
   }
 }
+output "droplet_ip" {
+  value = digitalocean_droplet.node.ipv4_address
+}
