@@ -11,21 +11,34 @@ jobs:
     outputs:
       target_ip: ${{ steps.out.outputs.ip }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
       
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
       - name: TF Init
-        run: terraform init -backend-config="access_key=${{ secrets.SPACES_ACCESS_ID }}" -backend-config="secret_key=${{ secrets.SPACES_SECRET_KEY }}"
+        run: terraform init -reconfigure -backend-config="access_key=${{ secrets.SPACES_ACCESS_ID }}" -backend-config="secret_key=${{ secrets.SPACES_SECRET_KEY }}"
         working-directory: ./terraform
 
       - name: TF Plan (Валідація за завданням 1)
-        run: terraform plan -var="do_token=${{ secrets.DO_TOKEN }}" -var="ssh_public_key=${{ secrets.SSH_PUBLIC_KEY }}" -var="last_name=${{ vars.LAST_NAME }}"
+        run: >
+          terraform plan 
+          -var="do_token=${{ secrets.DO_TOKEN }}" 
+          -var="ssh_public_key=${{ secrets.SSH_PUBLIC_KEY }}" 
+          -var="last_name=${{ vars.LAST_NAME }}" 
+          -var="spaces_access_id=${{ secrets.SPACES_ACCESS_ID }}" 
+          -var="spaces_secret_key=${{ secrets.SPACES_SECRET_KEY }}"
         working-directory: ./terraform
 
       - name: TF Apply
-        run: terraform apply -auto-approve -var="do_token=${{ secrets.DO_TOKEN }}" -var="ssh_public_key=${{ secrets.SSH_PUBLIC_KEY }}" -var="last_name=${{ vars.LAST_NAME }}"
+        run: >
+          terraform apply -auto-approve 
+          -var="do_token=${{ secrets.DO_TOKEN }}" 
+          -var="ssh_public_key=${{ secrets.SSH_PUBLIC_KEY }}" 
+          -var="last_name=${{ vars.LAST_NAME }}" 
+          -var="spaces_access_id=${{ secrets.SPACES_ACCESS_ID }}" 
+          -var="spaces_secret_key=${{ secrets.SPACES_SECRET_KEY }}"
         working-directory: ./terraform
 
       - name: Export IP
@@ -38,13 +51,15 @@ jobs:
     needs: terraform
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Install SSH Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          # Додаємо хост у відомі, щоб Ansible не питав підтвердження
           ssh-keyscan -H ${{ needs.terraform.outputs.target_ip }} >> ~/.ssh/known_hosts
 
       - name: Ansible Check (Перевірка за завданням 2)
