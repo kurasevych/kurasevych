@@ -5,22 +5,26 @@ on:
     branches: [ main ]
 
 jobs:
-  # КРОК 1: Збірка образів (Завдання 3)
+  # КРОК 1: Збірка та Пуш образів (Завдання 3)
   build-docker:
     name: "Build & Push Docker Images"
     runs-on: ubuntu-latest
+    # Додаємо секрети в оточення всього Job, щоб вони точно були доступні
+    env:
+      DOCKER_USER: ${{ secrets.DOCKERHUB_KURASEVYCH }}
+      DOCKER_PASS: ${{ secrets.DOCKERHUB_KEY }}
     steps:
       - name: Checkout App Code (External Repository)
         uses: actions/checkout@v4
         with:
           repository: 'YulianSalo/devops-exam-pt2'
-          fetch-depth: 0 # Дозволяє бачити всі гілки (develop) та теги (1.0.0)
+          fetch-depth: 0 
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_KURASEVYCH }}
-          password: ${{ secrets.DOCKERHUB_KEY }}
+          username: ${{ env.DOCKER_USER }}
+          password: ${{ env.DOCKER_PASS }}
 
       - name: Build & Push Develop (DEV)
         run: |
@@ -66,7 +70,7 @@ jobs:
         run: echo "ip=$(terraform output -raw droplet_ip)" >> $GITHUB_OUTPUT
         working-directory: ./terraform
 
-  # КРОК 3: Встановлення софту та Деплой (Завдання 2 та 3)
+  # КРОК 3: Встановлення та Деплой (Завдання 2 та 3)
   ansible:
     name: "Software & Deploy (Ansible)"
     needs: terraform
@@ -80,7 +84,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          # Даємо серверу час на фінальне налаштування SSH
           sleep 30
           ssh-keyscan -H ${{ needs.terraform.outputs.target_ip }} >> ~/.ssh/known_hosts
 
