@@ -1,17 +1,47 @@
-name: "Cloud Deployment CI/CD"
+name: "DevOps Exam: Full Pipeline"
 
 on:
   push:
     branches: [ main ]
 
 jobs:
+  # КРОК 1: Збірка образів (Завдання 3)
+  build-docker:
+    name: "Build & Push Docker Images"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout App Code (External Repository)
+        uses: actions/checkout@v4
+        with:
+          repository: 'YulianSalo/devops-exam-pt2'
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_KURASEVYCH }}
+          password: ${{ secrets.DOCKERHUB_KEY }}
+
+      - name: Build & Push Develop (DEV)
+        run: |
+          git checkout develop
+          docker build -t kurasevych/devops-app:develop .
+          docker push kurasevych/devops-app:develop
+
+      - name: Build & Push 1.0.0 (RELEASE)
+        run: |
+          git checkout 1.0.0
+          docker build -t kurasevych/devops-app:1.0.0 .
+          docker push kurasevych/devops-app:1.0.0
+
+  # КРОК 2: Інфраструктура (Завдання 1)
   terraform:
     name: "Infrastructure (Terraform)"
+    needs: build-docker
     runs-on: ubuntu-latest
     outputs:
       target_ip: ${{ steps.out.outputs.ip }}
     steps:
-      - name: Checkout Code
+      - name: Checkout Your Code
         uses: actions/checkout@v4
       
       - name: Setup Terraform
@@ -19,15 +49,6 @@ jobs:
 
       - name: TF Init
         run: terraform init -reconfigure -backend-config="access_key=${{ secrets.SPACES_ACCESS_ID }}" -backend-config="secret_key=${{ secrets.SPACES_SECRET_KEY }}"
-        working-directory: ./terraform
-
-      - name: TF Plan
-        run: >
-          terraform plan 
-          -var="do_token=${{ secrets.DO_TOKEN }}" 
-          -var="ssh_public_key=${{ secrets.SSH_PUBLIC_KEY }}" 
-          -var="spaces_access_id=${{ secrets.SPACES_ACCESS_ID }}" 
-          -var="spaces_secret_key=${{ secrets.SPACES_SECRET_KEY }}"
         working-directory: ./terraform
 
       - name: TF Apply
@@ -44,12 +65,13 @@ jobs:
         run: echo "ip=$(terraform output -raw droplet_ip)" >> $GITHUB_OUTPUT
         working-directory: ./terraform
 
+  # КРОК 3: Встановлення софту та Деплой (Завдання 2 та 3)
   ansible:
-    name: "Software (Ansible)"
+    name: "Software & Deploy (Ansible)"
     needs: terraform
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Your Code
         uses: actions/checkout@v4
 
       - name: Install SSH Key
@@ -57,11 +79,10 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          # Чекаємо 30 секунд, щоб SSH на сервері встиг піднятися
           sleep 30
           ssh-keyscan -H ${{ needs.terraform.outputs.target_ip }} >> ~/.ssh/known_hosts
 
-      - name: Ansible Install (Kubernetes & Minikube)
+      - name: Ansible Install & App Deploy
         run: |
           ansible-playbook -i '${{ needs.terraform.outputs.target_ip }},' -u root --private-key ~/.ssh/id_rsa ansible/playbook.yml
 
