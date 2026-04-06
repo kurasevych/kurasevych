@@ -1,29 +1,67 @@
-- name: Install K8s components
+---
+- name: Setup Kubernetes and Minikube
   hosts: all
   become: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
   tasks:
-    - name: Update apt and install dependencies
+    - name: Update apt cache and install dependencies
       apt:
-        name: [ 'curl', 'apt-transport-https', 'ca-certificates', 'software-properties-common', 'conntrack' ]
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - gnupg
+          - conntrack
         state: present
         update_cache: yes
 
-    - name: Install Docker (Engine for Minikube)
+    - name: Install Docker
       apt:
         name: docker.io
         state: present
 
-    - name: Download Minikube
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Ensure root is in docker group
+      user:
+        name: root
+        groups: docker
+        append: yes
+
+    - name: Install kubectl
+      get_url:
+        url: "https://dl.k8s.io/release/{{ lookup('pipe', 'curl -L -s https://dl.k8s.io/release/stable.txt') }}/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+
+    - name: Install Minikube
       get_url:
         url: https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
         dest: /usr/local/bin/minikube
         mode: '0755'
 
-    - name: Download Kubectl
-      get_url:
-        url: "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
-        dest: /usr/local/bin/kubectl
-        mode: '0755'
+    - name: Start Minikube as root (Force Docker driver)
+      command: minikube start --driver=docker --force --non-interactive
+      register: minikube_start
+      changed_when: "'Done!' in minikube_start.stdout"
+      ignore_errors: yes
+
+    - name: Wait for Minikube to be ready
+      command: kubectl get nodes
+      register: nodes_ready
+      retries: 10
+      delay: 15
+      until: nodes_ready.rc == 0
 
     - name: Install Helm
-      shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      shell: |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
