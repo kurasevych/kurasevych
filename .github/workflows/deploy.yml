@@ -1,0 +1,56 @@
+name: CI/CD Infrastructure and Apps
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  terraform:
+    name: "Terraform Build"
+    runs-on: ubuntu-latest
+    env:
+      DIGITALOCEAN_TOKEN: ${{ secrets.DO_TOKEN }}
+    outputs:
+      droplet_ip: ${{ steps.get_ip.outputs.ip }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init -backend-config="access_key=${{ secrets.SPACES_ACCESS_ID }}" -backend-config="secret_key=${{ secrets.SPACES_SECRET_KEY }}"
+
+      - name: Terraform Plan (Перевірка за завданням 1)
+        run: terraform plan -var="do_token=${{ secrets.DO_TOKEN }}" -var="ssh_public_key=${{ secrets.SSH_PUBLIC_KEY }}" -var="last_name=${{ vars.LAST_NAME }}"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -var="do_token=${{ secrets.DO_TOKEN }}" -var="ssh_public_key=${{ secrets.SSH_PUBLIC_KEY }}" -var="last_name=${{ vars.LAST_NAME }}"
+
+      - name: Get Droplet IP
+        id: get_ip
+        run: echo "ip=$(terraform output -raw droplet_ip)" >> $GITHUB_OUTPUT
+
+  ansible:
+    name: "Ansible Configuration"
+    needs: terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Ansible Check (Перевірка за завданням 2)
+        run: |
+          ansible-playbook -i "${{ needs.terraform.outputs.droplet_ip }}," -u root --private-key ~/.ssh/id_rsa ansible/playbook.yml --check
+
+      - name: Ansible Playbook Run
+        run: |
+          ansible-playbook -i "${{ needs.terraform.outputs.droplet_ip }}," -u root --private-key ~/.ssh/id_rsa ansible/playbook.yml
