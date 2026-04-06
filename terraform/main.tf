@@ -1,43 +1,13 @@
-# 1. Оголошення змінних (Важливо для отримання даних з GitHub Secrets)
-variable "do_token" {
-  description = "DigitalOcean API Token"
-}
-
-variable "ssh_public_key" {
-  description = "Public SSH key for Droplet access"
-}
-
-variable "last_name" {
-  description = "Student last name for resource naming"
-  default     = "kurasevych"
-}
-
-variable "region" {
-  description = "DigitalOcean region"
-  default     = "fra1"
-}
-
-# Нові змінні для роботи зі Spaces (Object Storage)
-variable "spaces_access_id" {
-  description = "DigitalOcean Spaces Access Key"
-}
-
-variable "spaces_secret_key" {
-  description = "DigitalOcean Spaces Secret Key"
-}
-
-# 2. Налаштування провайдера DigitalOcean
-provider "digitalocean" {
-  token = var.do_token
-
-  # Ці параметри необхідні для створення бакета в Завданні 1
-  spaces_access_id  = var.spaces_access_id
-  spaces_secret_key = var.spaces_secret_key
-}
+# 1. Оголошення змінних
+variable "do_token" {}
+variable "ssh_public_key" {}
+variable "last_name" { default = "kurasevych" }
+variable "region"    { default = "fra1" }
+variable "spaces_access_id" {}
+variable "spaces_secret_key" {}
 
 terraform {
   required_version = ">= 1.5.0"
-
   required_providers {
     digitalocean = {
       source  = "digitalocean/digitalocean"
@@ -45,7 +15,7 @@ terraform {
     }
   }
 
-  # 3. Налаштування бекенду для зберігання стану в хмарі
+  # 2. Налаштування бекенду
   backend "s3" {
     endpoint                    = "https://fra1.digitaloceanspaces.com"
     bucket                      = "kurasevych-tfstate-backend"
@@ -59,14 +29,90 @@ terraform {
   }
 }
 
-# 4. Мережа (VPC) за завданням
+# 3. Провайдер
+provider "digitalocean" {
+  token             = var.do_token
+  spaces_access_id  = var.spaces_access_id
+  spaces_secret_key = var.spaces_secret_key
+}
+
+# 4. Мережа (VPC)
 resource "digitalocean_vpc" "vpc" {
   name     = "${var.last_name}-vpc"
   region   = var.region
   ip_range = "10.10.10.0/24"
 }
 
-# 5. SSH-ключ у DigitalOcean
+# 5. SSH-ключ (Перевір, щоб тут була закриваюча дужка в кінці!)
 resource "digitalocean_ssh_key" "default" {
   name       = "${var.last_name}-ssh-key"
   public_key = var.ssh_public_key
+}
+
+# 6. Віртуальна машина (Droplet)
+resource "digitalocean_droplet" "node" {
+  name     = "${var.last_name}-node"
+  size     = "s-2vcpu-4gb"
+  image    = "ubuntu-24-04-x64"
+  region   = var.region
+  vpc_uuid = digitalocean_vpc.vpc.id
+  ssh_keys = [digitalocean_ssh_key.default.id]
+  tags     = ["${var.last_name}-node"]
+}
+
+# 7. Фаєрвол
+resource "digitalocean_firewall" "firewall" {
+  name = "${var.last_name}-firewall"
+  droplet_ids = [digitalocean_droplet.node.id]
+
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "22"
+    source_addresses = ["0.0.0.0/0", "::/0"]
+  }
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "80"
+    source_addresses = ["0.0.0.0/0", "::/0"]
+  }
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "443"
+    source_addresses = ["0.0.0.0/0", "::/0"]
+  }
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "8000-8003"
+    source_addresses = ["0.0.0.0/0", "::/0"]
+  }
+
+  outbound_rule {
+    protocol              = "tcp"
+    port_range            = "1-65535"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
+  outbound_rule {
+    protocol              = "udp"
+    port_range            = "1-65535"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
+  outbound_rule {
+    protocol              = "icmp"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
+}
+
+# 8. Бакет (Object Storage)
+resource "digitalocean_spaces_bucket" "bucket" {
+  name   = "${var.last_name}-bucket"
+  region = var.region
+  acl    = "private"
+  versioning {
+    enabled = true
+  }
+}
+
+# 9. Вивід IP
+output "droplet_ip" {
+  value = digitalocean_droplet.node.ipv4_address
+}
