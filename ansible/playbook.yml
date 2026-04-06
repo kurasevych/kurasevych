@@ -1,0 +1,29 @@
+- name: Install K8s components
+  hosts: all
+  become: yes
+  tasks:
+    - name: Update apt and install dependencies
+      apt:
+        name: [ 'curl', 'apt-transport-https', 'ca-certificates', 'software-properties-common', 'conntrack' ]
+        state: present
+        update_cache: yes
+
+    - name: Install Docker (Engine for Minikube)
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Download Minikube
+      get_url:
+        url: https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+        dest: /usr/local/bin/minikube
+        mode: '0755'
+
+    - name: Download Kubectl
+      get_url:
+        url: "https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+
+    - name: Install Helm
+      shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
