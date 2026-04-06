@@ -100,7 +100,7 @@ resource "digitalocean_firewall" "firewall" {
 }
 
 resource "digitalocean_spaces_bucket" "bucket" {
-  name   = "kurasevych-final-lab-v2" # НОВА ЧИСТА НАЗВА
+  name   = "kurasevych-lab-final-storage-v3" # Зміни назву на цю
   region = var.region
   acl    = "private"
 }
