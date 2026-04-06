@@ -99,11 +99,12 @@ resource "digitalocean_firewall" "firewall" {
   }
 }
 
-# 5. Бакет (Завдання 1)
+# 8. Бакет (Object Storage) - Спрощений варіант без помилок
 resource "digitalocean_spaces_bucket" "bucket" {
-  name   = "kurasevych-storage-final"
+  name   = "kurasevych-final-bucket" # Нова назва без подвійних дефісів
   region = var.region
   acl    = "private"
+  
 }
 
 output "droplet_ip" {
