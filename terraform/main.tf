@@ -1,4 +1,4 @@
-# 1. Оголошення змінних
+# 1. Variables
 variable "do_token" {}
 variable "ssh_public_key" {}
 variable "last_name" { default = "kurasevych" }
@@ -6,17 +6,15 @@ variable "region"    { default = "fra1" }
 variable "spaces_access_id" {}
 variable "spaces_secret_key" {}
 
+# 2. Terraform Settings & Backend
 terraform {
   required_version = ">= 1.5.0"
-
   required_providers {
     digitalocean = {
       source  = "digitalocean/digitalocean"
       version = "~> 2.0"
     }
   }
-
-  # 2. Налаштування бекенду для зберігання стану
   backend "s3" {
     endpoint                    = "https://fra1.digitaloceanspaces.com"
     bucket                      = "kurasevych-tfstate-backend"
@@ -30,27 +28,25 @@ terraform {
   }
 }
 
-# 3. Налаштування провайдера
+# 3. Provider
 provider "digitalocean" {
   token             = var.do_token
   spaces_access_id  = var.spaces_access_id
   spaces_secret_key = var.spaces_secret_key
 }
 
-# 4. Мережа (VPC) - Назва тепер статична для стабільності
+# 4. Resources
 resource "digitalocean_vpc" "vpc" {
-  name     = "kurasevych-vpc-network"
+  name     = "kurasevych-vpc"
   region   = var.region
   ip_range = "10.10.10.0/24"
 }
 
-# 5. SSH-ключ у DigitalOcean
 resource "digitalocean_ssh_key" "default" {
-  name       = "kurasevych-ssh-key"
+  name       = "kurasevych-key"
   public_key = var.ssh_public_key
 }
 
-# 6. Віртуальна машина (Droplet) для Minikube
 resource "digitalocean_droplet" "node" {
   name     = "kurasevych-node"
   size     = "s-2vcpu-4gb"
@@ -58,14 +54,10 @@ resource "digitalocean_droplet" "node" {
   region   = var.region
   vpc_uuid = digitalocean_vpc.vpc.id
   ssh_keys = [digitalocean_ssh_key.default.id]
-
-  tags = ["kurasevych-node"]
 }
 
-# 7. Фаєрвол із дозволеними портами за завданням
 resource "digitalocean_firewall" "firewall" {
-  name = "kurasevych-firewall"
-
+  name        = "kurasevych-firewall"
   droplet_ids = [digitalocean_droplet.node.id]
 
   inbound_rule {
@@ -73,19 +65,16 @@ resource "digitalocean_firewall" "firewall" {
     port_range       = "22"
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
-
   inbound_rule {
     protocol         = "tcp"
     port_range       = "80"
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
-
   inbound_rule {
     protocol         = "tcp"
     port_range       = "443"
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
-
   inbound_rule {
     protocol         = "tcp"
     port_range       = "8000-8003"
@@ -97,18 +86,24 @@ resource "digitalocean_firewall" "firewall" {
     port_range            = "1-65535"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
-
   outbound_rule {
     protocol              = "udp"
     port_range            = "1-65535"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
-
   outbound_rule {
     protocol              = "icmp"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
 }
 
-# 8. Бакет (Object Storage) за завданням 1
-resource "digitalocean_spaces_bucket" "bucket"
+resource "digitalocean_spaces_bucket" "bucket" {
+  name   = "kurasevych-lab-bucket"
+  region = var.region
+  acl    = "private"
+}
+
+# 5. Output
+output "droplet_ip" {
+  value = digitalocean_droplet.node.ipv4_address
+}
