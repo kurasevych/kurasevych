@@ -69,4 +69,4 @@ resource "digitalocean_vpc" "vpc" {
 # 5. SSH-ключ у DigitalOcean
 resource "digitalocean_ssh_key" "default" {
   name       = "${var.last_name}-ssh-key"
-  public_
+  public_key = var.ssh_public_key
