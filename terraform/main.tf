@@ -1,3 +1,13 @@
+# 1. Оголошення змінних (Критично важливо!)
+variable "do_token" {}
+variable "ssh_public_key" {}
+variable "last_name" {
+  default = "kurasevych"
+}
+variable "region" {
+  default = "fra1"
+}
+
 terraform {
   required_version = ">= 1.5.0"
 
@@ -8,7 +18,7 @@ terraform {
     }
   }
 
-  # 1. Налаштування бекенду для зберігання стану в DO Spaces
+  # 2. Налаштування бекенду
   backend "s3" {
     endpoint                    = "https://fra1.digitaloceanspaces.com"
     bucket                      = "kurasevych-tfstate-backend"
@@ -26,23 +36,23 @@ provider "digitalocean" {
   token = var.do_token
 }
 
-# 2. Мережа (VPC)
+# 3. Мережа (VPC)
 resource "digitalocean_vpc" "vpc" {
   name     = "${var.last_name}-vpc"
   region   = var.region
   ip_range = "10.10.10.0/24"
 }
 
-# 3. SSH-ключ для доступу до сервера
+# 4. SSH-ключ
 resource "digitalocean_ssh_key" "default" {
   name       = "${var.last_name}-ssh-key"
   public_key = var.ssh_public_key
 }
 
-# 4. Віртуальна машина (Droplet)
+# 5. Віртуальна машина (Droplet)
 resource "digitalocean_droplet" "node" {
   name     = "${var.last_name}-node"
-  size     = "s-2vcpu-4gb"   # 2 vCPU, 4 GB RAM — для Minikube
+  size     = "s-2vcpu-4gb"
   image    = "ubuntu-24-04-x64"
   region   = var.region
   vpc_uuid = digitalocean_vpc.vpc.id
@@ -51,13 +61,12 @@ resource "digitalocean_droplet" "node" {
   tags = ["${var.last_name}-node"]
 }
 
-# 5. Фаєрвол (Налаштування портів за завданням)
+# 6. Фаєрвол
 resource "digitalocean_firewall" "firewall" {
   name = "${var.last_name}-firewall"
 
   droplet_ids = [digitalocean_droplet.node.id]
 
-  # Вхідний трафік
   inbound_rule {
     protocol         = "tcp"
     port_range       = "22"
@@ -82,7 +91,6 @@ resource "digitalocean_firewall" "firewall" {
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
 
-  # Вихідний трафік (усі порти 1-65535)
   outbound_rule {
     protocol              = "tcp"
     port_range            = "1-65535"
@@ -101,7 +109,7 @@ resource "digitalocean_firewall" "firewall" {
   }
 }
 
-# 6. Бакет для об'єктів (Завдання 1)
+# 7. Бакет
 resource "digitalocean_spaces_bucket" "bucket" {
   name   = "${var.last_name}-bucket"
   region = var.region
@@ -112,4 +120,7 @@ resource "digitalocean_spaces_bucket" "bucket" {
   }
 }
 
-# 7. Вивід IP-адреси для
+# 8. Вивід IP
+output "droplet_ip" {
+  value = digitalocean_droplet.node.ipv4_address
+}
