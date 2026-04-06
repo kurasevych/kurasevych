@@ -1,11 +1,38 @@
-# 1. Оголошення змінних (Критично важливо!)
-variable "do_token" {}
-variable "ssh_public_key" {}
-variable "last_name" {
-  default = "kurasevych"
+# 1. Оголошення змінних (Важливо для отримання даних з GitHub Secrets)
+variable "do_token" {
+  description = "DigitalOcean API Token"
 }
+
+variable "ssh_public_key" {
+  description = "Public SSH key for Droplet access"
+}
+
+variable "last_name" {
+  description = "Student last name for resource naming"
+  default     = "kurasevych"
+}
+
 variable "region" {
-  default = "fra1"
+  description = "DigitalOcean region"
+  default     = "fra1"
+}
+
+# Нові змінні для роботи зі Spaces (Object Storage)
+variable "spaces_access_id" {
+  description = "DigitalOcean Spaces Access Key"
+}
+
+variable "spaces_secret_key" {
+  description = "DigitalOcean Spaces Secret Key"
+}
+
+# 2. Налаштування провайдера DigitalOcean
+provider "digitalocean" {
+  token = var.do_token
+
+  # Ці параметри необхідні для створення бакета в Завданні 1
+  spaces_access_id  = var.spaces_access_id
+  spaces_secret_key = var.spaces_secret_key
 }
 
 terraform {
@@ -18,7 +45,7 @@ terraform {
     }
   }
 
-  # 2. Налаштування бекенду
+  # 3. Налаштування бекенду для зберігання стану в хмарі
   backend "s3" {
     endpoint                    = "https://fra1.digitaloceanspaces.com"
     bucket                      = "kurasevych-tfstate-backend"
@@ -32,95 +59,14 @@ terraform {
   }
 }
 
-provider "digitalocean" {
-  token = var.do_token
-}
-
-# 3. Мережа (VPC)
+# 4. Мережа (VPC) за завданням
 resource "digitalocean_vpc" "vpc" {
   name     = "${var.last_name}-vpc"
   region   = var.region
   ip_range = "10.10.10.0/24"
 }
 
-# 4. SSH-ключ
+# 5. SSH-ключ у DigitalOcean
 resource "digitalocean_ssh_key" "default" {
   name       = "${var.last_name}-ssh-key"
-  public_key = var.ssh_public_key
-}
-
-# 5. Віртуальна машина (Droplet)
-resource "digitalocean_droplet" "node" {
-  name     = "${var.last_name}-node"
-  size     = "s-2vcpu-4gb"
-  image    = "ubuntu-24-04-x64"
-  region   = var.region
-  vpc_uuid = digitalocean_vpc.vpc.id
-  ssh_keys = [digitalocean_ssh_key.default.id]
-
-  tags = ["${var.last_name}-node"]
-}
-
-# 6. Фаєрвол
-resource "digitalocean_firewall" "firewall" {
-  name = "${var.last_name}-firewall"
-
-  droplet_ids = [digitalocean_droplet.node.id]
-
-  inbound_rule {
-    protocol         = "tcp"
-    port_range       = "22"
-    source_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  inbound_rule {
-    protocol         = "tcp"
-    port_range       = "80"
-    source_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  inbound_rule {
-    protocol         = "tcp"
-    port_range       = "443"
-    source_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  inbound_rule {
-    protocol         = "tcp"
-    port_range       = "8000-8003"
-    source_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  outbound_rule {
-    protocol              = "tcp"
-    port_range            = "1-65535"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  outbound_rule {
-    protocol              = "udp"
-    port_range            = "1-65535"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-
-  outbound_rule {
-    protocol              = "icmp"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-}
-
-# 7. Бакет
-resource "digitalocean_spaces_bucket" "bucket" {
-  name   = "${var.last_name}-bucket"
-  region = var.region
-  acl    = "private"
-
-  versioning {
-    enabled = true
-  }
-}
-
-# 8. Вивід IP
-output "droplet_ip" {
-  value = digitalocean_droplet.node.ipv4_address
-}
+  public_
