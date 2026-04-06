@@ -1,0 +1,22 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars        # НІКОЛИ не комітьте реальні секрети!
+*.tfplan
+tfplan
+*.tfstate
+*.tfstate.backup
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Credentials
+*.json
+service-account*.json
+gcp-key*.json
+
+# OS
+.DS_Store
+Thumbs.db
