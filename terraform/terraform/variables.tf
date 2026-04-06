@@ -1,28 +1,35 @@
-variable "project_id" {
-  description = "Google Cloud Project ID"
+variable "do_token" {
+  description = "DigitalOcean API Token"
   type        = string
+  sensitive   = true
 }
 
 variable "region" {
-  description = "GCP region closest to Ukraine (Warsaw, Poland)"
+  description = "DigitalOcean region (Frankfurt — найближчий до України)"
   type        = string
-  default     = "europe-central2"  # Warsaw — closest GCP region to Ukraine
+  default     = "fra1"  # Frankfurt
 }
 
 variable "last_name" {
-  description = "Your last name used in resource naming"
+  description = "Прізвище для назв ресурсів"
   type        = string
   default     = "kurasevych"
 }
 
-variable "ssh_user" {
-  description = "SSH username for the VM"
+variable "ssh_public_key" {
+  description = "Публічний SSH ключ для доступу до VM"
   type        = string
-  default     = "ubuntu"
+  sensitive   = true
 }
 
-variable "ssh_public_key" {
-  description = "SSH public key for VM access (injected via CI/CD secret)"
+variable "spaces_access_id" {
+  description = "DigitalOcean Spaces Access Key ID"
+  type        = string
+  sensitive   = true
+}
+
+variable "spaces_secret_key" {
+  description = "DigitalOcean Spaces Secret Key"
   type        = string
   sensitive   = true
 }
