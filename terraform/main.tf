@@ -1,7 +1,7 @@
 # 1. Оголошення змінних
 variable "do_token" {}
 variable "ssh_public_key" {}
-variable "last_name" { default = "kurasevych" }
+variable "last_name" { default = "kurasevych" } # Прізвище латиницею без пробілів
 variable "region"    { default = "fra1" }
 variable "spaces_access_id" {}
 variable "spaces_secret_key" {}
@@ -14,8 +14,6 @@ terraform {
       version = "~> 2.0"
     }
   }
-
-  # 2. Налаштування бекенду
   backend "s3" {
     endpoint                    = "https://fra1.digitaloceanspaces.com"
     bucket                      = "kurasevych-tfstate-backend"
@@ -29,40 +27,38 @@ terraform {
   }
 }
 
-# 3. Провайдер
 provider "digitalocean" {
   token             = var.do_token
   spaces_access_id  = var.spaces_access_id
   spaces_secret_key = var.spaces_secret_key
 }
 
-# 4. Мережа (VPC)
+# 2. VPC (Назва тепер без зайвих символів)
 resource "digitalocean_vpc" "vpc" {
-  name     = "${var.last_name}-vpc"
+  name     = "vpc-${var.last_name}" 
   region   = var.region
   ip_range = "10.10.10.0/24"
 }
 
-# 5. SSH-ключ (Перевір, щоб тут була закриваюча дужка в кінці!)
+# 3. SSH Key
 resource "digitalocean_ssh_key" "default" {
-  name       = "${var.last_name}-ssh-key"
+  name       = "key-${var.last_name}"
   public_key = var.ssh_public_key
 }
 
-# 6. Віртуальна машина (Droplet)
+# 4. Droplet
 resource "digitalocean_droplet" "node" {
-  name     = "${var.last_name}-node"
+  name     = "node-${var.last_name}"
   size     = "s-2vcpu-4gb"
   image    = "ubuntu-24-04-x64"
   region   = var.region
   vpc_uuid = digitalocean_vpc.vpc.id
   ssh_keys = [digitalocean_ssh_key.default.id]
-  tags     = ["${var.last_name}-node"]
 }
 
-# 7. Фаєрвол
+# 5. Firewall
 resource "digitalocean_firewall" "firewall" {
-  name = "${var.last_name}-firewall"
+  name = "fw-${var.last_name}"
   droplet_ids = [digitalocean_droplet.node.id]
 
   inbound_rule {
@@ -102,9 +98,9 @@ resource "digitalocean_firewall" "firewall" {
   }
 }
 
-# 8. Бакет (Object Storage)
+# 6. Spaces Bucket (Назва має бути дуже специфічною)
 resource "digitalocean_spaces_bucket" "bucket" {
-  name   = "${var.last_name}-bucket"
+  name   = "bucket-${var.last_name}-unique-id" # Змінив на більш унікальну
   region = var.region
   acl    = "private"
   versioning {
@@ -112,7 +108,6 @@ resource "digitalocean_spaces_bucket" "bucket" {
   }
 }
 
-# 9. Вивід IP
 output "droplet_ip" {
   value = digitalocean_droplet.node.ipv4_address
 }
