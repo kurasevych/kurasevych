@@ -1,11 +1,9 @@
 name: "Task 3: Build and Deploy App"
 
 on:
-  workflow_run:
-    workflows: ["Cloud Deployment CI/CD"] # Запускати після того, як створиться інфраструктура
-    types: [completed]
   push:
-    branches: [ main ] # Або ручний запуск
+    branches: [ main ]
+  workflow_dispatch: # Додає кнопку "Run workflow" вручну для тестів
 
 jobs:
   build-and-push:
@@ -14,24 +12,24 @@ jobs:
       - name: Checkout App Code
         uses: actions/checkout@v4
         with:
-          repository: 'YulianSalo/devops-exam-pt2' # Репозиторій з кодом застосунку
+          repository: 'YulianSalo/devops-exam-pt2'
+          fetch-depth: 0 # ОБОВ'ЯЗКОВО для роботи з гілками
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          # ВИКОРИСТОВУЄМО ТВОЇ РЕАЛЬНІ НАЗВИ СЕКРЕТІВ
+          username: ${{ secrets.DOCKERHUB_KURASEVYCH }}
+          password: ${{ secrets.DOCKERHUB_KEY }}
 
-      # Збірка для DEV (гілка develop)
-      - name: Build and Push DEV
+      - name: Build and Push DEV (develop branch)
         run: |
           git checkout develop
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/devops-app:develop .
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/devops-app:develop
+          docker build -t kurasevych/devops-app:develop .
+          docker push kurasevych/devops-app:develop
 
-      # Збірка для RELEASE (тег 1.0.0)
-      - name: Build and Push RELEASE
+      - name: Build and Push RELEASE (tag 1.0.0)
         run: |
           git checkout 1.0.0
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/devops-app:1.0.0 .
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/devops-app:1.0.0
+          docker build -t kurasevych/devops-app:1.0.0 .
+          docker push kurasevych/devops-app:1.0.0
