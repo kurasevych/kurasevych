@@ -1,4 +1,3 @@
-# 1. Variables - Оголошення вхідних даних
 variable "do_token" {}
 variable "ssh_public_key" {}
 variable "last_name" { default = "kurasevych" }
@@ -6,7 +5,6 @@ variable "region"    { default = "fra1" }
 variable "spaces_access_id" {}
 variable "spaces_secret_key" {}
 
-# 2. Terraform Settings & Backend
 terraform {
   required_version = ">= 1.5.0"
 
@@ -17,12 +15,11 @@ terraform {
     }
   }
 
-  # Зберігання стану в твоєму бакеті kurasevych-tfstate-backend
   backend "s3" {
     endpoint                    = "https://fra1.digitaloceanspaces.com"
     bucket                      = "kurasevych-tfstate-backend"
     key                         = "terraform/state/terraform.tfstate"
-    region                      = "us-east-1"
+    region                      = "us-east-1" # Порт для S3 сумісності
     skip_credentials_validation = true
     skip_metadata_api_check     = true
     skip_region_validation      = true
@@ -31,43 +28,40 @@ terraform {
   }
 }
 
-# 3. Provider Configuration
 provider "digitalocean" {
   token             = var.do_token
   spaces_access_id  = var.spaces_access_id
   spaces_secret_key = var.spaces_secret_key
 }
 
-# 4. Network (VPC)
+# 1. Мережа
 resource "digitalocean_vpc" "vpc" {
-  name     = "kurasevych-vpc-network"
+  name     = "kurasevych-vpc"
   region   = var.region
   ip_range = "10.10.10.0/24"
 }
 
-# 5. SSH Key for access
+# 2. Ключ
 resource "digitalocean_ssh_key" "default" {
   name       = "kurasevych-ssh-key"
   public_key = var.ssh_public_key
 }
 
-# 6. Computing Node (Droplet) - 2 vCPU, 4GB RAM для Minikube
+# 3. Сервер (Droplet)
 resource "digitalocean_droplet" "node" {
-  name     = "kurasevych-kubernetes-node"
+  name     = "kurasevych-node"
   size     = "s-2vcpu-4gb"
   image    = "ubuntu-24-04-x64"
   region   = var.region
   vpc_uuid = digitalocean_vpc.vpc.id
   ssh_keys = [digitalocean_ssh_key.default.id]
-  tags     = ["kurasevych-lab"]
 }
 
-# 7. Security (Firewall) - Дозволені порти за завданням
+# 4. Фаєрвол
 resource "digitalocean_firewall" "firewall" {
-  name        = "kurasevych-firewall"
+  name = "kurasevych-firewall"
   droplet_ids = [digitalocean_droplet.node.id]
 
-  # Вхідний трафік (SSH, HTTP, HTTPS, App ports)
   inbound_rule {
     protocol         = "tcp"
     port_range       = "22"
@@ -89,7 +83,6 @@ resource "digitalocean_firewall" "firewall" {
     source_addresses = ["0.0.0.0/0", "::/0"]
   }
 
-  # Вихідний трафік (повністю відкритий за завданням)
   outbound_rule {
     protocol              = "tcp"
     port_range            = "1-65535"
@@ -106,14 +99,13 @@ resource "digitalocean_firewall" "firewall" {
   }
 }
 
-# 8. Object Storage (Spaces Bucket) - Завдання 1
+# 5. Бакет (Завдання 1)
 resource "digitalocean_spaces_bucket" "bucket" {
-  name   = "kurasevych-lab-final-storage"
+  name   = "kurasevych-storage-final"
   region = var.region
   acl    = "private"
 }
 
-# 9. Output - Передача IP-адреси в Ansible
 output "droplet_ip" {
   value = digitalocean_droplet.node.ipv4_address
 }
